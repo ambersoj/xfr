@@ -46,9 +46,12 @@ void Xfr::apply_snapshot(const json& j)
     if (j.contains("xfr_tx_next"))  regs_.xfr_tx_next   = j["xfr_tx_next"];
     if (j.contains("xfr_rx_open"))  regs_.xfr_rx_open   = j["xfr_rx_open"];
     if (j.contains("xfr_rx_path"))  regs_.xfr_rx_path   = j["xfr_rx_path"];
-    if (j.contains("rx_seq"))       regs_.rx_seq        = j["rx_seq"];
-    if (j.contains("rx_buffer"))    regs_.rx_buffer     = j["rx_buffer"];
-    if (j.contains("rx_len"))       regs_.rx_len        = j["rx_len"];
+    if (j.contains("rx_seq"))
+        regs_.rx_seq = std::stoi(j["rx_seq"].get<std::string>());
+    if (j.contains("rx_buffer"))
+        regs_.rx_buffer = j["rx_buffer"].get<std::string>();
+    if (j.contains("rx_len"))
+        regs_.rx_len = std::stoi(j["rx_len"].get<std::string>());
 
     // Errors
     if (j.contains("last_error"))   regs_.last_error   = j["last_error"];

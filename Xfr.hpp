@@ -1,41 +1,30 @@
 #pragma once
 
-#include "Belief.hpp"
 #include "Component.hpp"
 
-#include <map>
-#include <vector>
-#include <string>
-#include <netinet/in.h>
+#define CHUNK_SIZE 1024
 
 using json = nlohmann::ordered_json;
 
 struct XfrRegisters
 {
+  // Identity Registers
   std::string component = "XFR";
-  int sba = 4004;
+  int sba = 0;
+  int fsm_sba_ = 5000;
 
-  // identity / intent
-  std::string mode = "idle";            // idle | send | recv
-  std::string file_path = "";
-  uint64_t file_size = 0;
-  std::string peer_id = "";
-  
-  // chunking
-  int chunk_size = 512;
-  uint64_t offset = 0;
-  uint32_t chunk_index = 0;
-  bool eof = false;
-  std::string chunk_payload = "";
+  // Control Registers:
+  bool xfr_tx_open = false;
+  std::string xfr_tx_path = "/usr/local/mpp/tx-file.txt";
+  bool xfr_tx_next = false;
+  bool xfr_rx_open = false;
+  std::string xfr_rx_path = "/usr/local/mpp/rx-file.txt";
+  bool xfr_rx_next = false;
+  int rx_seq = 0;
+  std::string rx_buffer;
+  int rx_len = 0;
 
-  // progress
-  bool send_done = false;
-  bool recv_done =false;
-
-  // control
-  bool advance = false;
-
-  // errors
+  // Errors
   std::string last_error = "";
 };
 
@@ -48,12 +37,21 @@ public:
     const char* component_name() const override { return "XFR"; }
     json serialize_registers() const;
     void apply_snapshot(const mpp::json& j);
-    void legacy_apply_snapshot(const mpp::json& j);
     void on_message(const mpp::json& j);
-    void publish_snapshot() {}
-    void Xfr::on_tick();
 
 private:
+    // file handling
+    int fd = 0;
+    int  tx_seq = 0;
+    int chunk_len = 0;
+    int offset = 0;
+    int file_size = 0;
+    bool eof = false;
+    char buffer[65536]{};
+
     XfrRegisters    regs_;
+
+    void read_chunk();
+    void write_chunk();
 
 };

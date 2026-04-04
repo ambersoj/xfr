@@ -15,7 +15,7 @@
                 "Xfr.cpp"
             ],
             "options": {
-                "cwd": "/usr/local/mppxfr/xfr"
+                "cwd": "/usr/local/mpp/xfr"
             },
             "group": {
                 "kind": "build",

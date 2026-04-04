@@ -1,4 +1,7 @@
 #include "Xfr.hpp"
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 using json = nlohmann::ordered_json;
 
@@ -12,22 +15,20 @@ json Xfr::serialize_registers() const
 {
     json j;
 
+    // Identity
     j["component"] = regs_.component;
     j["sba"]       = regs_.sba;
 
-    j["mode"]      = regs_.mode;
-    j["file_path"] = regs_.file_path;
-    j["peer_id"]   = regs_.peer_id;
+    // Registers
+    j["xfr_tx_open"]      = regs_.xfr_tx_open;
+    j["xfr_tx_path"] = regs_.xfr_tx_path;
+    j["xfr_tx_next"]   = regs_.xfr_tx_next;
+    j["xfr_rx_open"]   = regs_.xfr_rx_open;
+    j["xfr_rx_path"]    = regs_.xfr_rx_path;
+    j["rx_seq"] = regs_.rx_seq;
+    j["rx_len"] = regs_.rx_len;
 
-    j["chunk_size"]    = regs_.chunk_size;
-
-    j["chunk_payload"]  = regs_.chunk_payload;
-
-    j["send_done"] = regs_.send_done;
-    j["recv_done"] = regs_.recv_done;
-
-    j["advance"]   = regs_.advance;
-
+    // Errors
     j["last_error"] = regs_.last_error;
 
     return j;
@@ -35,65 +36,161 @@ json Xfr::serialize_registers() const
 
 void Xfr::apply_snapshot(const json& j)
 {
-    if (j.value("tick", false)) {
-        on_tick();
+    // Identity
+    if (j.contains("component")) regs_.component = j["component"];
+    if (j.contains("sba"))   regs_.sba   = j["sba"];
+
+    // Control Registers
+    if (j.contains("xfr_tx_open"))  regs_.xfr_tx_open   = j["xfr_tx_open"];
+    if (j.contains("xfr_tx_path"))  regs_.xfr_tx_path   = j["xfr_tx_path"];
+    if (j.contains("xfr_tx_next"))  regs_.xfr_tx_next   = j["xfr_tx_next"];
+    if (j.contains("xfr_rx_open"))  regs_.xfr_rx_open   = j["xfr_rx_open"];
+    if (j.contains("xfr_rx_path"))  regs_.xfr_rx_path   = j["xfr_rx_path"];
+    if (j.contains("rx_seq"))       regs_.rx_seq        = j["rx_seq"];
+    if (j.contains("rx_buffer"))    regs_.rx_buffer     = j["rx_buffer"];
+    if (j.contains("rx_len"))       regs_.rx_len        = j["rx_len"];
+
+    // Errors
+    if (j.contains("last_error"))   regs_.last_error   = j["last_error"];
+
+    if (!j.contains("verb"))
         return;
-    }
-    // --- Intent-aware path ---
-    if (j.contains("verb")) {
-        const std::string verb = j["verb"];
 
-        if (verb == "GET") {
-            reply_json(serialize_registers());
-            return;
-        }
-        if (verb == "PUT") {
-            if (j.value("resource","") == "xfr" && j.contains("body")) {
-                const auto& body = j["body"];
+    const std::string verb = j["verb"];
 
-            }
-            return;
-        }
-    }
-    // --- Legacy path (unchanged) ---
-    legacy_apply_snapshot(j);
-}
-
-void Xfr::legacy_apply_snapshot(const json& j)
-{
-    if (j.contains("mode")) regs_.mode = j["mode"];
-    if (j.value("advance", false)) regs_.advance = true;
-    if (j.contains("mode") && j["mode"] == "send") {
-        regs_.offset = 0;
-        regs_.chunk_index = 0;
-        regs_.eof = false;
-        regs_.send_done = false;
+    if (verb == "GET") {
+        reply_json(serialize_registers());
+        return;
     }
 }
 
 void Xfr::on_message(const json&)
 {
+    if (regs_.xfr_tx_open) {
+
+        fd = open(regs_.xfr_tx_path.c_str(), O_RDONLY);
+        if (fd < 0) {
+            regs_.last_error = "open failed";
+            return;
+        }
+
+        offset = 0;
+        tx_seq = 0;
+        eof = false;
+
+        struct stat st{};
+        if (fstat(fd, &st) == 0)
+            file_size = st.st_size;
+        else
+            file_size = 0;
+
+        json out;
+        out["component"] = "XFR";
+        out["tx_opened"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+
+        regs_.xfr_tx_open = false;
+    }
+    if (regs_.xfr_rx_open) {
+
+        fd = open(regs_.xfr_rx_path.c_str(),
+                O_WRONLY | O_CREAT | O_TRUNC,
+                0644);
+        if (fd < 0) {
+            regs_.last_error = "open failed";
+            return;
+        }
+
+        offset = 0;
+        regs_.rx_seq = 0;
+        eof = false;
+
+        struct stat st{};
+        if (fstat(fd, &st) == 0)
+            file_size = st.st_size;
+        else
+            file_size = 0;
+
+        json out;
+        out["component"] = "XFR";
+        out["rx_opened"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+
+        regs_.xfr_rx_open = false;
+    }
+    if (regs_.xfr_tx_next) {
+
+        read_chunk();
+
+        json fsm_data_out;
+        fsm_data_out["component"] = "XFR";
+        fsm_data_out["seq"] = tx_seq;
+        fsm_data_out["len"] = chunk_len;
+        fsm_data_out["buffer"] = std::string(buffer, chunk_len);
+
+        send_json(fsm_data_out, regs_.fsm_sba_);
+
+        json out;
+        out["component"] = "XFR";
+        out["xfr_tx_valid"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+
+        regs_.xfr_tx_next = false;
+    }
+    if (regs_.xfr_rx_next) {
+
+        write_chunk();
+
+        json out;
+        out["component"] = "XFR";
+        out["xfr_rx_valid"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+
+        regs_.xfr_rx_next = false;
+    }
 }
 
-void Xfr::on_tick()
+void Xfr::read_chunk()
 {
-    if (!regs_.advance)
+    if (eof) {
+        chunk_len = 0;
+        return;
+    }
+
+    chunk_len = read(fd, buffer, CHUNK_SIZE);
+
+    if (chunk_len <= 0) {
+        eof = true;
+        chunk_len = 0;
+        return;
+    }
+
+    offset += chunk_len;
+    tx_seq++;
+
+    if (offset >= file_size)
+        eof = true;
+}
+
+void Xfr::write_chunk()
+{
+    if (regs_.rx_len <= 0)
         return;
 
-    regs_.offset += regs_.chunk_size;
-    regs_.chunk_index++;
+    ssize_t written =
+        write(fd,
+              regs_.rx_buffer.data(),
+              regs_.rx_len);
 
-    if (regs_.offset >= regs_.file_size)
-        regs_.eof = true;
-
-    regs_.chunk_payload =
-        "CHUNK#" + std::to_string(regs_.chunk_index);
-
-    regs_.advance = false;
-
-    if (regs_.eof) {
-        commit("XFR.eof", true);
-    } else {
-        commit("XFR.chunk_ready", true);
+    if (written != regs_.rx_len) {
+        regs_.last_error = "write failed";
+        return;
     }
+
+    offset += written;
+    regs_.rx_seq++;
 }

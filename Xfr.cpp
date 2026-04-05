@@ -3,8 +3,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-static int safe_to_int(const json& j, const char* key, int current);
-
 using json = nlohmann::ordered_json;
 
 Xfr::Xfr(int sba)
@@ -34,6 +32,29 @@ json Xfr::serialize_registers() const
     j["last_error"] = regs_.last_error;
 
     return j;
+}
+
+static int safe_to_int(const json& j, const char* key, int current)
+{
+    if (!j.contains(key))
+        return current;
+
+    if (j[key].is_number())
+        return j[key];
+
+    if (!j[key].is_string())
+        return current;
+
+    auto s = j[key].get<std::string>();
+
+    if (s.empty())
+        return current;
+
+    // reject non-digits
+    if (!std::all_of(s.begin(), s.end(), [](unsigned char c){ return std::isdigit(c); }))
+        return current;
+
+    return std::stoi(s);
 }
 
 void Xfr::apply_snapshot(const json& j)
@@ -196,19 +217,4 @@ void Xfr::write_chunk()
 
     offset += written;
     regs_.rx_seq++;
-}
-
-static int safe_to_int(const json& j, const char* key, int current)
-{
-    if (!j.contains(key))
-        return current;
-
-    if (j[key].is_number())
-        return j[key];
-
-    auto s = j[key].get<std::string>();
-    if (s.empty())
-        return current;
-
-    return std::stoi(s);
 }

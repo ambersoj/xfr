@@ -144,37 +144,59 @@ void Xfr::on_message(const json&)
 
         regs_.xfr_rx_open = false;
     }
-    if (regs_.xfr_tx_next) {
+    if (regs_.xfr_tx_next && !eof) {
 
         read_chunk();
 
-        json fsm_data_out;
-        fsm_data_out["component"] = "XFR";
-        fsm_data_out["seq"] = tx_seq;
-        fsm_data_out["len"] = chunk_len;
-        fsm_data_out["buffer"] = std::string(buffer, chunk_len);
+        if (eof) {
+            json out;
+            out["component"] = "XFR";
+            out["tx_eof"] = true;
+            send_json(out, regs_.fsm_sba_);
 
-        send_json(fsm_data_out, regs_.fsm_sba_);
+            regs_.xfr_tx_next = false;
+            return;
+        }
 
         json out;
         out["component"] = "XFR";
+        out["seq"] = tx_seq;
+        out["len"] = chunk_len;
+        out["eof"] = eof;
+        out["buffer"] = std::string(buffer, chunk_len);
+        out["component"] = "XFR";
         out["xfr_tx_valid"] = true;
-
         send_json(out, regs_.fsm_sba_);
 
         regs_.xfr_tx_next = false;
     }
-    if (regs_.xfr_rx_next) {
-
+    if (!regs_.rx_buffer.empty())
+    {
         write_chunk();
 
-        json out;
-        out["component"] = "XFR";
-        out["xfr_rx_valid"] = true;
+        if (eof)
+        {
+            json j;
+            j["component"] = "XFR";
+            j["rx_done"] = true;
+            send_json(j, regs_.fsm_sba_);
+        }
 
-        send_json(out, regs_.fsm_sba_);
+        regs_.rx_buffer.clear();
+    }
+    if (regs_.xfr_tx_close)
+    {
+        if (fd >= 0)
+            close(fd);
 
-        regs_.xfr_rx_next = false;
+        regs_.xfr_tx_close = false;
+    }
+    if (regs_.xfr_rx_close)
+    {
+        if (fd >= 0)
+            close(fd);
+
+        regs_.xfr_rx_close = false;
     }
 }
 
@@ -182,6 +204,13 @@ void Xfr::read_chunk()
 {
     if (eof) {
         chunk_len = 0;
+
+        json out;
+        out["component"] = "XFR";
+        out["tx_eof"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+
         return;
     }
 
@@ -196,8 +225,16 @@ void Xfr::read_chunk()
     offset += chunk_len;
     tx_seq++;
 
-    if (offset >= file_size)
+    if (offset >= file_size) {
         eof = true;
+
+        json out;
+        out["component"] = "XFR";
+        out["tx_eof"] = true;
+
+        send_json(out, regs_.fsm_sba_);
+        eof = false;
+    }
 }
 
 void Xfr::write_chunk()

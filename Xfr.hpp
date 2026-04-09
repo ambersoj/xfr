@@ -15,13 +15,14 @@ struct XfrRegisters
 
   // Control Registers:
   bool xfr_tx_open = false;
+  bool xfr_tx_close = false;
   std::string xfr_tx_path = "/usr/local/mpp/tx-file.txt";
   bool xfr_tx_next = false;
   bool xfr_rx_open = false;
+  bool xfr_rx_close = false;
   std::string xfr_rx_path = "/usr/local/mpp/rx-file.txt";
-  bool xfr_rx_next = false;
   int rx_seq = 0;
-  std::string rx_buffer;
+  std::string rx_buffer = "";
   int rx_len = 0;
 
   // Errors
@@ -42,7 +43,7 @@ public:
 private:
     // file handling
     int fd = 0;
-    int  tx_seq = 0;
+    int tx_seq = 0;
     int chunk_len = 0;
     int offset = 0;
     int file_size = 0;

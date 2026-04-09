@@ -6,7 +6,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "/usr/local/mpp/xfr/xfr",
-            "args": [6000],
+            "args": [5002],
             "stopAtEntry": false,
             "cwd": "/usr/local/mpp/xfr",
             "environment": [],

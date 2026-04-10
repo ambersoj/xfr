@@ -100,7 +100,7 @@ void Xfr::on_message(const json&)
 
         offset = 0;
         tx_seq = 0;
-        eof = false;
+        regs_.eof = false;
 
         struct stat st{};
         if (fstat(fd, &st) == 0)
@@ -128,7 +128,7 @@ void Xfr::on_message(const json&)
 
         offset = 0;
         regs_.rx_seq = 0;
-        eof = false;
+        regs_.eof = false;
 
         struct stat st{};
         if (fstat(fd, &st) == 0)
@@ -144,14 +144,14 @@ void Xfr::on_message(const json&)
 
         regs_.xfr_rx_open = false;
     }
-    if (regs_.xfr_tx_next && !eof) {
+    if (regs_.xfr_tx_next && !regs_.eof) {
 
         read_chunk();
 
-        if (eof) {
+        if (regs_.eof) {
             json out;
             out["component"] = "XFR";
-            out["tx_eof"] = true;
+            out["eof"] = true;
             send_json(out, regs_.fsm_sba_);
 
             regs_.xfr_tx_next = false;
@@ -162,7 +162,7 @@ void Xfr::on_message(const json&)
         out["component"] = "XFR";
         out["seq"] = tx_seq;
         out["len"] = chunk_len;
-        out["eof"] = eof;
+        out["eof"] = regs_.eof;
         out["buffer"] = std::string(buffer, chunk_len);
         out["component"] = "XFR";
         out["xfr_tx_valid"] = true;
@@ -174,13 +174,18 @@ void Xfr::on_message(const json&)
     {
         write_chunk();
 
-        if (eof)
+        if (regs_.eof)
         {
             json j;
             j["component"] = "XFR";
             j["rx_done"] = true;
             send_json(j, regs_.fsm_sba_);
         }
+
+        json out;
+        out["component"] = "XFR";
+        out["xfr_rx_valid"] = true;
+        send_json(out, regs_.fsm_sba_);
 
         regs_.rx_buffer.clear();
     }
@@ -202,12 +207,12 @@ void Xfr::on_message(const json&)
 
 void Xfr::read_chunk()
 {
-    if (eof) {
+    if (regs_.eof) {
         chunk_len = 0;
 
         json out;
         out["component"] = "XFR";
-        out["tx_eof"] = true;
+        out["eof"] = true;
 
         send_json(out, regs_.fsm_sba_);
 
@@ -217,7 +222,7 @@ void Xfr::read_chunk()
     chunk_len = read(fd, buffer, CHUNK_SIZE);
 
     if (chunk_len <= 0) {
-        eof = true;
+        regs_.eof = true;
         chunk_len = 0;
         return;
     }
@@ -226,14 +231,13 @@ void Xfr::read_chunk()
     tx_seq++;
 
     if (offset >= file_size) {
-        eof = true;
+        regs_.eof = true;
 
         json out;
         out["component"] = "XFR";
-        out["tx_eof"] = true;
+        out["eof"] = true;
 
         send_json(out, regs_.fsm_sba_);
-        eof = false;
     }
 }
 

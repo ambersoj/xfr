@@ -16,14 +16,16 @@ struct XfrRegisters
   // Control Registers:
   bool xfr_tx_open = false;
   bool xfr_tx_close = false;
-  std::string xfr_tx_path = "/usr/local/mpp/tx-file.txt";
+  std::string xfr_tx_path = "/usr/local/mpp/fsm/tx-file.txt";
   bool xfr_tx_next = false;
   bool xfr_rx_open = false;
   bool xfr_rx_close = false;
-  std::string xfr_rx_path = "/usr/local/mpp/rx-file.txt";
+  std::string xfr_rx_path = "/usr/local/mpp/fsm/rx-file.txt";
   int rx_seq = 0;
   std::string rx_buffer = "";
   int rx_len = 0;
+
+  bool eof = false;
 
   // Errors
   std::string last_error = "";
@@ -47,7 +49,6 @@ private:
     int chunk_len = 0;
     int offset = 0;
     int file_size = 0;
-    bool eof = false;
     char buffer[65536]{};
 
     XfrRegisters    regs_;

@@ -24,10 +24,10 @@ namespace mpp
     // Component (UDP control + belief commit capable)
     // -----------------------------------------------------------------------------
     template <typename Derived>
-    class Component
+    class UdpComponent
     {
     public:
-        explicit Component(int sba)
+        explicit UdpComponent(int sba)
             : sba_(sba),
               running_(true),
               udp_fd_(-1)
@@ -35,7 +35,7 @@ namespace mpp
             setup_udp();
         }
 
-        virtual ~Component()
+        virtual ~UdpComponent()
         {
             running_ = false;
             if (udp_fd_ >= 0)

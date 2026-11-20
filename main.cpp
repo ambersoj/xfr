@@ -1,4 +1,4 @@
 #include "Xfr.hpp"
-#include "Component.hpp"
+#include "UdpComponent.hpp"
 
 MPP_MAIN(Xfr);
